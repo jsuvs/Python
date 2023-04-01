@@ -40,13 +40,18 @@ sample_size=2 #int16
 block_size=2048
 #note: as the sample rate in this example is 16000 and the block size is 2048, the callback will be called about 8 times per second (roughly 16000 / 2048)
 
+#this is how to get the default input device
+#on windows this is directly the microphone set if you go into sound settings
+#this is the input device that will be used to record with if one isn't specified
+default_microphone = sounddevice.query_devices(kind='input')
+
 #now to set up a microphone input stream using these settings
 stream = sounddevice.RawInputStream(
         channels=1,
         samplerate=sample_rate,
         callback=callback,
         blocksize=block_size,
-        dtype="int16",
+        dtype="int16"
     )
 
 #during a sounddevice.sleep execution blocks and callback is periodically called with new microphone stream data.
