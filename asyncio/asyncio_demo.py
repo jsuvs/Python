@@ -4,8 +4,7 @@ import time
 import queue
 
 #using asyncio code can be written to run concurrently
-#blocking operations appear to be running in the background even though it all runs on
-#a single thread
+#blocking operations appear to be running in the background even though it all runs on a single thread
 
 #this method prints 1,2,3 but with a 500ms delay between each print
 #in total it will take about 1 second to complete and will block
@@ -23,9 +22,10 @@ print123_synchronous()
 #alternatively you can rewrite the function to use asyncio and get concurrent execution on a single thread
 #the use of the async keyword makes this a coroutine (cooperating routine)
 #a couroutine can contain await statements.
-#the way it effectively works is that the function returns at await points, allowing other tasks to execute
-#once the statement to the right of the await completes the function is resumed at that point
+#the way it effectively works is that the function pauses at await points. The statement to the right of the await is
+#evaluated, returning a future. once this is complete the coroutine is resumed.
 #in this way the CPU is never blocking for 0.5 second as in the synchronous example, but can get on doing other tasks
+#the statement to the right of the await must be an awaitable object
 async def print123_async():
     print(1)
     #the await will cause the function to return immediately here
@@ -108,5 +108,42 @@ async def m2():
     await asyncio.gather(producer2(q), consumer2(q))
 asyncio.run(m2())
 
+#the event loop that drives asyncio can be obtained from within a coroutine and used
+#to insert tasks or callbacks. In this case below a callback is scheduled to be run on the next
+#iteration of the event loop
+#there's also call_at and call_later functions that can be used to schedule the call
+print("event loops")
+def callback(argument):
+    print("callback " + argument)
 
+async def test1():
+    print("a")
+    await asyncio.sleep(1)
+    print("b")
+    event_loop = asyncio.get_running_loop()
+    event_loop.call_soon(callback, "arg")
+    await asyncio.sleep(2)
+    print("c")
 
+asyncio.run(test1())
+#output will be
+#a
+#b
+#callback arg
+#c
+
+#an async generator can be created where each value obtains can be awaited
+#simulate an async receive, just return the input after a 1 second delay
+print("async generator")
+async def recv_data(data):
+    await asyncio.sleep(1)
+    return data
+async def generator_coroutine():
+    for i in range(4):
+        data = await recv_data(i)
+        yield data
+async def caller():
+    async_generator=generator_coroutine()
+    async for data in async_generator:
+        print(data)
+asyncio.run(caller())

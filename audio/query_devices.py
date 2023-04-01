@@ -29,6 +29,3 @@ print(all_devices)
 #this obtains the installed audio APIs, for example Windows DirectSound, ASIO
 #as well as the devices that use each one
 print(sounddevice.query_hostapis())
-
-print(all)
-print(all)
