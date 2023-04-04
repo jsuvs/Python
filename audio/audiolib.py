@@ -2,9 +2,9 @@
 #mic_to_speaker.py contains example using these classes
 
 import sounddevice
-import wavio
 import numpy as np
 import asyncio
+import queue
 
 #Encapsulates the system microphone providing an async method to read audio data from it
 class Microphone:
@@ -39,17 +39,96 @@ class Microphone:
                 data = await q.get()
                 yield data
 
-#Encapsulates system speaker, providing a method to output audio data to it
+#Encapsulates system speaker
+#provides methods to play, pause and stop
 class Speaker:
     def __init__(self, sample_rate, block_size):
         self.__sample_rate = sample_rate
         self.__block_size = block_size
-        self.__output_stream = sounddevice.OutputStream(channels=1,samplerate=sample_rate,blocksize=block_size,dtype="int16")
-        
-    def start(self):
-        self.__output_stream.start()
+        self.__output_stream = sounddevice.OutputStream(channels=1,samplerate=sample_rate,blocksize=block_size, callback=self.__callback,dtype="int16")
+        self.__queue = queue.Queue()
+        self.__buffer = None
+        self.__state="stopped"
+    def __callback(self, outdata, frames, time, status):
+        while True:
+            if self.__state == "stopped" or self.__state == "paused":
+                #this causes execution of the callback to cease until output stream start is run
+                raise sounddevice.CallbackAbort()
+            #if there are enough frames in the buffer to return a full block
+            if self.__buffer.shape[0] >= frames:
+                outdata[:] = self.__buffer[:frames,:]
+                self.__buffer = self.__buffer[frames:,:]
+                break
+            #only play remaining data if there is none queued
+            #if will have to be padded with zeroes
+            if self.__buffer.shape[0] > 0 and self.__queue.qsize() == 0:
+                outdata[self.__buffer.shape[0]:].fill(0)
+                self.__buffer = np.empty((0, 1))
+                raise sounddevice.CallbackAbort()
+            data = self.__queue.get()
+            if data.shape[0] > 0:
+                self.__buffer=np.concatenate((self.__buffer, data))
 
-    def send(self, data):
+    #play or resume 
+    #If speaker is already playing the samples will be 
+    #appended to the existing buffer
+    def play(self, samples=None):
+        if samples is not None:
+            self.__send_samples(samples)
+        self.__state="playing"
         if not self.__output_stream.active:
+            self.__output_stream.stop()
             self.__output_stream.start()
-        self.__output_stream.write(data)
+
+    def __send_samples(self, samples):
+        #if samples are a 1D array convert them to single channel 2D array
+        if len(samples.shape) == 1:
+            samples = samples.reshape((samples.shape[0], 1))
+        #clear the buffer before starting from stopped
+        if self.__state == "stopped":
+            self.__buffer = np.empty((0, samples.shape[1]))
+        self.__queue.put(samples)
+    
+    def pause(self):
+        self.__state = "paused"
+
+    def stop(self):
+        self.__state = "stopped"
+        self.__queue.empty()
+
+import soundfile as sf
+async def test():
+    filename = 'audio/output.wav'
+    data, fs = sf.read(filename, dtype='int16')
+    speaker = Speaker(16000, 1024)
+    speaker.play(data)
+    speaker.play(data)
+    await asyncio.sleep(11)
+    speaker.play(data)
+    await asyncio.sleep(4)
+    speaker.stop()
+    await asyncio.sleep(1)
+    speaker.play()
+    await asyncio.sleep(1)
+    speaker.stop()
+    await asyncio.sleep(1)
+    speaker.play(data)
+    await asyncio.sleep(8)
+
+async def test2():
+    sample_rate=8000
+    block_size=4000
+    speaker = Speaker(sample_rate, 2000)
+    t = np.arange(0, block_size/sample_rate*2.4, 1/sample_rate)
+    freq = 1500
+    while True:
+        freq+=100
+        n = 100 * np.sin(2 * np.pi * freq * t)
+        n = n.astype('int16')
+        #speaker.send(n)
+        speaker.play(n)
+        await asyncio.sleep(10)
+        #break
+
+#asyncio.run(test())
+
