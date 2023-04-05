@@ -5,6 +5,8 @@ import sounddevice
 import numpy as np
 import asyncio
 import queue
+import librosa
+import soundfile as sf
 
 #Encapsulates the system microphone providing an async method to read audio data from it
 class Microphone:
@@ -49,6 +51,7 @@ class Speaker:
         self.__queue = queue.Queue()
         self.__buffer = None
         self.__state="stopped"
+        self.speed=1.0
     def __callback(self, outdata, frames, time, status):
         while True:
             if self.__state == "stopped" or self.__state == "paused":
@@ -81,6 +84,10 @@ class Speaker:
             self.__output_stream.start()
 
     def __send_samples(self, samples):
+        samples = samples.astype(np.float32).transpose()
+        samples = librosa.effects.time_stretch(samples, rate=self.speed)
+        samples = samples.transpose()
+
         #if samples are a 1D array convert them to single channel 2D array
         if len(samples.shape) == 1:
             samples = samples.reshape((samples.shape[0], 1))
@@ -96,7 +103,6 @@ class Speaker:
         self.__state = "stopped"
         self.__queue.empty()
 
-import soundfile as sf
 async def test():
     filename = 'audio/output.wav'
     data, fs = sf.read(filename, dtype='int16')
@@ -125,10 +131,8 @@ async def test2():
         freq+=100
         n = 100 * np.sin(2 * np.pi * freq * t)
         n = n.astype('int16')
-        #speaker.send(n)
         speaker.play(n)
         await asyncio.sleep(10)
         #break
 
 #asyncio.run(test())
-
